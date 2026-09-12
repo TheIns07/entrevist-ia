@@ -349,7 +349,7 @@ export default function OnboardingPage() {
 
             industry:
               industry.trim() ||
-              null,
+              undefined,
 
             experience,
 
