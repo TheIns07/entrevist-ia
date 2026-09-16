@@ -1250,7 +1250,8 @@ export default function OnboardingPage() {
             text-[#505050]
           "
                   >
-                    {pdfPreview.cleanText ||
+                    {pdfPreview.aiText ||
+                      pdfPreview.cleanText ||
                       pdfPreview.layoutText ||
                       pdfPreview.rawText ||
                       "No se recuperó texto legible."}

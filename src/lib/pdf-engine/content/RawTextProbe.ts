@@ -22,6 +22,19 @@ import {
   GlyphExtractor,
 } from "./GlyphExtractor";
 
+import {
+  DocumentIntelligenceEngine,
+} from "../ai/DocumentIntelligenceEngine";
+
+import type {
+  DocumentQuality,
+} from "../quality/types";
+
+import type {
+  DocumentStructure,
+  ResumeDetectionResult,
+} from "../structure/types";
+
 export interface PdfTextProbeResult {
   rawText:
     string;
@@ -48,7 +61,22 @@ export interface PdfTextProbeResult {
     number;
 
   warnings:
-    PdfWarning[];
+  PdfWarning[];
+
+  aiText:
+  string;
+
+  structure:
+  DocumentStructure;
+
+  resume:
+  ResumeDetectionResult;
+
+  quality:
+  DocumentQuality;
+
+  confidence:
+  number;
 }
 
 export type PdfProbeStage =
@@ -60,7 +88,8 @@ export type PdfProbeStage =
   | "layout-complete"
   | "page-complete"
   | "cleaning"
-  | "complete";
+  | "complete"
+  | "analyzing";
 
 export interface PdfProbeProgress {
   stage:
@@ -642,6 +671,52 @@ export async function extractRawTextProbe(
       ) =>
         page.cleanText
     );
+  
+    /*
+ * =====================================================
+ * FASE 5
+ * ESTRUCTURA / CALIDAD / AI TEXT
+ * =====================================================
+ */
+
+emitProgress(
+  onProgress,
+  {
+    stage:
+      "analyzing",
+
+    message:
+      "Analizando estructura y preparando contenido para IA...",
+
+    progress:
+      98,
+
+    totalPages,
+  }
+);
+
+await yieldToBrowser();
+
+console.time(
+  "[PDF Engine] Document intelligence"
+);
+
+const intelligenceEngine =
+  new DocumentIntelligenceEngine();
+
+const intelligence =
+  intelligenceEngine.analyze({
+    cleanText,
+
+    warnings,
+  });
+
+console.timeEnd(
+  "[PDF Engine] Document intelligence"
+);
+
+const aiText =
+  intelligence.aiText;
 
   /*
    * =====================================================
@@ -729,6 +804,95 @@ export async function extractRawTextProbe(
     )
   );
 
+  console.log(
+    "================================"
+  );
+  
+  console.log(
+    "[PDF Engine] DOCUMENT STRUCTURE"
+  );
+  
+  console.log(
+    "================================"
+  );
+  
+  console.log(
+    intelligence.structure
+  );
+  
+  console.log(
+    "================================"
+  );
+  
+  console.log(
+    "[PDF Engine] RESUME STRUCTURE"
+  );
+  
+  console.log(
+    "================================"
+  );
+  
+  console.table(
+    intelligence.resume.sections.map(
+      (
+        section
+      ) => ({
+        kind:
+          section.kind,
+  
+        heading:
+          section.heading ??
+          "",
+  
+        confidence:
+          section.confidence,
+  
+        preview:
+          section.text.slice(
+            0,
+            120
+          ),
+      })
+    )
+  );
+  
+  console.log(
+    "================================"
+  );
+  
+  console.log(
+    "[PDF Engine] QUALITY"
+  );
+  
+  console.log(
+    "================================"
+  );
+  
+  console.log(
+    intelligence.quality
+  );
+  
+  console.log(
+    "[PDF Engine] Confidence:",
+    intelligence.confidence
+  );
+  
+  console.log(
+    "================================"
+  );
+  
+  console.log(
+    "[PDF Engine] AI TEXT"
+  );
+  
+  console.log(
+    "================================"
+  );
+  
+  console.log(
+    aiText
+  );
+
   /*
    * =====================================================
    * FIN
@@ -740,39 +904,56 @@ export async function extractRawTextProbe(
     {
       stage:
         "complete",
-
+  
       message:
-        `Extracción terminada. ${cleanText.length} caracteres limpios.`,
-
+        `Extracción terminada. Confianza ${Math.round(
+          intelligence.confidence *
+            100
+        )}%.`,
+  
       progress:
         100,
-
+  
       totalPages,
-
+  
       partialText:
-        cleanText,
+        aiText,
     }
   );
 
   return {
     rawText,
-
+  
     layoutText,
-
+  
     cleanText,
-
+  
+    aiText,
+  
     pageTexts,
-
+  
     pageLayoutTexts,
-
+  
     pageCleanTexts,
-
+  
     removedFragments:
       cleaning.removed,
-
+  
+    structure:
+      intelligence.structure,
+  
+    resume:
+      intelligence.resume,
+  
+    quality:
+      intelligence.quality,
+  
+    confidence:
+      intelligence.confidence,
+  
     pageCount:
       totalPages,
-
+  
     warnings,
   };
 }

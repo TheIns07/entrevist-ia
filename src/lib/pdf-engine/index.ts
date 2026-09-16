@@ -75,3 +75,21 @@ export * from "./cleaning/NoiseDetector";
 export * from "./cleaning/LineWrapResolver";
 
 export * from "./cleaning/DocumentCleaner";
+
+export * from "./structure/types";
+
+export * from "./structure/StructureDetector";
+
+export * from "./structure/ResumeSectionDetector";
+
+export * from "./quality/types";
+
+export * from "./quality/TrustScore";
+
+export * from "./quality/DocumentQualityAnalyzer";
+
+export * from "./ai/AITextBuilder";
+
+export * from "./ai/DocumentIntelligenceEngine";
+
+export * from "./structure/ContactDetector";
