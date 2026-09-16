@@ -1,4 +1,5 @@
 import {
+  type ChangeEvent,
   useMemo,
   useState,
 } from "react";
@@ -8,8 +9,11 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   Check,
+  FileText,
   Languages,
   Layers3,
+  LoaderCircle,
+  UploadCloud,
 } from "lucide-react";
 
 import {
@@ -29,6 +33,19 @@ import {
 import {
   createInterviewSession,
 } from "../services/interviews";
+
+import {
+  PdfEngineError,
+} from "../lib/pdf-engine/errors";
+
+import {
+  extractPdfTextPreview,
+  type PdfTextPreviewResult,
+} from "../services/pdf.service";
+
+import type {
+  PdfProbeProgress,
+} from "../lib/pdf-engine/content/RawTextProbe";
 
 type Experience =
   | "junior"
@@ -50,7 +67,8 @@ type OnboardingStep =
   | 1
   | 2
   | 3
-  | 4;
+  | 4
+  | 5;
 
 interface ChoiceOption<T extends string> {
   value: T;
@@ -184,6 +202,42 @@ export default function OnboardingPage() {
       null
     );
 
+  const [
+    pdfFile,
+    setPdfFile,
+  ] = useState<File | null>(
+    null
+  );
+
+  const [
+    pdfPreview,
+    setPdfPreview,
+  ] =
+    useState<PdfTextPreviewResult | null>(
+      null
+    );
+
+  const [
+    pdfLoading,
+    setPdfLoading,
+  ] = useState(false);
+
+  const [
+    pdfError,
+    setPdfError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    pdfProgress,
+    setPdfProgress,
+  ] =
+    useState<PdfProbeProgress | null>(
+      null
+    );
+
   /*
    * =========================================================
    * PROGRESO
@@ -197,7 +251,7 @@ export default function OnboardingPage() {
       }
 
       return (
-        (step / 4) *
+        (step / 5) *
         100
       );
     }, [step]);
@@ -222,16 +276,19 @@ export default function OnboardingPage() {
           );
 
         case 2:
+          return !pdfLoading;
+
+        case 3:
           return Boolean(
             experience
           );
 
-        case 3:
+        case 4:
           return Boolean(
             interviewType
           );
 
-        case 4:
+        case 5:
           return Boolean(
             language
           );
@@ -245,7 +302,161 @@ export default function OnboardingPage() {
       experience,
       interviewType,
       language,
+      pdfLoading
     ]);
+
+  const handlePdfChange =
+    async (
+      event:
+        ChangeEvent<HTMLInputElement>
+    ) => {
+      const file =
+        event.target.files?.[0];
+
+      if (!file) {
+        return;
+      }
+
+      setPdfFile(file);
+
+      setPdfPreview(null);
+
+      setPdfError(null);
+
+      setPdfLoading(true);
+
+      setPdfProgress({
+        stage: "starting",
+        message:
+          "Preparando archivo...",
+        progress: 1,
+      });
+
+      try {
+        const result =
+          await extractPdfTextPreview(
+            file,
+            (
+              progress
+            ) => {
+              setPdfProgress(
+                progress
+              );
+
+              console.log(
+                "[Onboarding PDF]",
+                progress
+              );
+            }
+          );
+
+        setPdfPreview(
+          result
+        );
+
+        console.log(
+          "=============================="
+        );
+
+        console.log(
+          "RAW TEXT"
+        );
+
+        console.log(
+          "=============================="
+        );
+
+        console.log(
+          result.rawText
+        );
+
+        console.log(
+          "=============================="
+        );
+
+        console.log(
+          "LAYOUT TEXT"
+        );
+
+        console.log(
+          "=============================="
+        );
+
+        console.log(
+          result.layoutText
+        );
+
+        console.log(
+          "=============================="
+        );
+
+        console.log(
+          "CLEAN TEXT"
+        );
+
+        console.log(
+          "=============================="
+        );
+
+        console.log(
+          result.cleanText
+        );
+
+        console.log(
+          "=============================="
+        );
+
+        console.log(
+          "REMOVED FRAGMENTS"
+        );
+
+        console.log(
+          "=============================="
+        );
+
+        console.table(
+          result.removedFragments
+        );
+      } catch (error) {
+        console.error(
+          "PDF Engine error:",
+          error
+        );
+
+        if (
+          error instanceof
+          PdfEngineError
+        ) {
+          setPdfError(
+            `${error.code}: ${error.message}`
+          );
+        } else if (
+          error instanceof
+          Error
+        ) {
+          setPdfError(
+            error.message
+          );
+        } else {
+          setPdfError(
+            "No pudimos procesar este PDF."
+          );
+        }
+      } finally {
+        setPdfLoading(false);
+      }
+    };
+
+  const clearPdf =
+    () => {
+      setPdfFile(null);
+
+      setPdfPreview(null);
+
+      setPdfError(null);
+
+      setPdfProgress(null);
+    };
 
   /*
    * =========================================================
@@ -302,7 +513,7 @@ export default function OnboardingPage() {
        * en el último paso,
        * simplemente avanzamos.
        */
-      if (step < 4) {
+      if (step < 5) {
         setStep(
           (
             current
@@ -386,9 +597,9 @@ export default function OnboardingPage() {
   const buttonText =
     step === 0
       ? "Comenzar"
-      : step === 4
-      ? "Preparar entrevista"
-      : "Continuar";
+      : step === 5
+        ? "Preparar entrevista"
+        : "Continuar";
 
   /*
    * =========================================================
@@ -536,12 +747,12 @@ export default function OnboardingPage() {
 
                 <MiniFeature
                   number="02"
-                  text="Personaliza la entrevista"
+                  text="Analiza tu CV"
                 />
 
                 <MiniFeature
                   number="03"
-                  text="Comienza a practicar"
+                  text="Personaliza la entrevista"
                 />
               </div>
             </div>
@@ -558,7 +769,7 @@ export default function OnboardingPage() {
             >
               <StepLabel
                 current={1}
-                total={4}
+                total={5}
               />
 
               <h1
@@ -639,17 +850,438 @@ export default function OnboardingPage() {
           )}
 
           {/* ===============================================
+    PDF / CV
+=============================================== */}
+
+
+          {step === 2 && (
+            <div
+              key="pdf"
+              className="premium-step-enter"
+            >
+              <StepLabel
+                current={2}
+                total={5}
+              />
+
+              <div
+                className="
+        mt-5
+        flex
+        h-11
+        w-11
+        items-center
+        justify-center
+        rounded-xl
+        bg-[#EAF8F4]
+        text-[#00A980]
+      "
+              >
+                <FileText
+                  size={20}
+                />
+              </div>
+
+              <h1
+                className="
+        mt-5
+        text-[30px]
+        font-bold
+        leading-tight
+        tracking-[-0.035em]
+        text-[#252525]
+
+        sm:text-[40px]
+      "
+              >
+                Probemos tu CV.
+              </h1>
+
+              <p
+                className="
+        mt-4
+        max-w-xl
+        text-sm
+        leading-6
+        text-[#777777]
+
+        sm:text-base
+      "
+              >
+                Sube un PDF para probar
+                nuestro motor de extracción.
+                Por ahora mostraremos
+                exactamente el texto que
+                logramos recuperar.
+              </p>
+
+              {!pdfFile && (
+                <label
+                  htmlFor="cv-pdf-upload"
+                  className="
+          mt-8
+          flex
+          cursor-pointer
+          flex-col
+          items-center
+          justify-center
+          rounded-2xl
+          border
+          border-dashed
+          border-[#DADAE3]
+          bg-white
+          px-6
+          py-10
+          text-center
+          transition
+
+          hover:border-[#BDB7F5]
+          hover:bg-[#FCFBFF]
+        "
+                >
+                  <div
+                    className="
+            flex
+            h-11
+            w-11
+            items-center
+            justify-center
+            rounded-xl
+            bg-[#F1EFFF]
+            text-[#5547E8]
+          "
+                  >
+                    <UploadCloud
+                      size={20}
+                    />
+                  </div>
+
+                  <p
+                    className="
+            mt-4
+            text-sm
+            font-semibold
+            text-[#323232]
+          "
+                  >
+                    Selecciona tu CV
+                  </p>
+
+                  <p
+                    className="
+            mt-1
+            text-xs
+            text-[#999999]
+          "
+                  >
+                    PDF · máximo 25 MB
+                  </p>
+
+                  <input
+                    id="cv-pdf-upload"
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                    onChange={
+                      handlePdfChange
+                    }
+                  />
+                </label>
+              )}
+
+              {pdfFile && (
+                <div
+                  className="
+          mt-8
+          rounded-2xl
+          border
+          border-[#E4E4E8]
+          bg-white
+          p-5
+        "
+                >
+                  <div
+                    className="
+            flex
+            items-center
+            justify-between
+            gap-4
+          "
+                  >
+                    <div
+                      className="
+              flex
+              min-w-0
+              items-center
+              gap-3
+            "
+                    >
+                      <div
+                        className="
+                flex
+                h-10
+                w-10
+                shrink-0
+                items-center
+                justify-center
+                rounded-xl
+                bg-[#F1EFFF]
+                text-[#5547E8]
+              "
+                      >
+                        <FileText
+                          size={18}
+                        />
+                      </div>
+
+                      <div
+                        className="
+                min-w-0
+              "
+                      >
+                        <p
+                          className="
+                  truncate
+                  text-sm
+                  font-semibold
+                  text-[#333333]
+                "
+                        >
+                          {pdfFile.name}
+                        </p>
+
+                        <p
+                          className="
+                  mt-0.5
+                  text-xs
+                  text-[#999999]
+                "
+                        >
+                          {formatFileSize(
+                            pdfFile.size
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {!pdfLoading && (
+                      <button
+                        type="button"
+                        onClick={
+                          clearPdf
+                        }
+                        className="
+                text-xs
+                font-medium
+                text-[#888888]
+              "
+                      >
+                        Cambiar
+                      </button>
+                    )}
+                  </div>
+
+                  {pdfLoading && (
+                    <div
+                      className="
+                        mt-5
+                        rounded-xl
+                        bg-[#F8F7FF]
+                        px-4
+                        py-4
+                      "
+                    >
+                      <div
+                        className="
+        flex
+        items-center
+        gap-2
+        text-sm
+        text-[#5547E8]
+      "
+                      >
+                        <LoaderCircle
+                          size={15}
+                          className="animate-spin"
+                        />
+
+                        {pdfProgress?.message ??
+                          "Leyendo PDF..."}
+                      </div>
+
+                      <div
+                        className="
+        mt-3
+        h-1.5
+        overflow-hidden
+        rounded-full
+        bg-[#E7E4FF]
+      "
+                      >
+                        <div
+                          className="
+          h-full
+          rounded-full
+          bg-[#5547E8]
+          transition-all
+          duration-300
+        "
+                          style={{
+                            width:
+                              `${pdfProgress?.progress ?? 0}%`,
+                          }}
+                        />
+                      </div>
+
+                      <div
+                        className="
+        mt-2
+        flex
+        justify-between
+        text-[11px]
+        text-[#999999]
+      "
+                      >
+                        <span>
+                          {pdfProgress?.stage ??
+                            "starting"}
+                        </span>
+
+                        <span>
+                          {pdfProgress?.progress ??
+                            0}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {pdfError && (
+                <div
+                  className="
+          mt-5
+          rounded-xl
+          border
+          border-red-200
+          bg-red-50
+          px-4
+          py-3
+        "
+                >
+                  <p
+                    className="
+            text-sm
+            leading-6
+            text-red-700
+          "
+                  >
+                    {pdfError}
+                  </p>
+                </div>
+              )}
+
+              {pdfPreview && (
+                <div
+                  className="
+          mt-5
+          overflow-hidden
+          rounded-2xl
+          border
+          border-[#E4E4E8]
+          bg-white
+        "
+                >
+                  <div
+                    className="
+            flex
+            items-center
+            justify-between
+            border-b
+            border-[#EEEEF1]
+            px-5
+            py-4
+          "
+                  >
+                    <div>
+                      <p
+                        className="
+                text-sm
+                font-semibold
+                text-[#303030]
+              "
+                      >
+                        Texto obtenido
+                      </p>
+
+                      <p
+                        className="
+                mt-1
+                text-xs
+                text-[#999999]
+              "
+                      >
+                        {pdfPreview.pageCount}{" "}
+                        {pdfPreview.pageCount === 1
+                          ? "página"
+                          : "páginas"}
+                      </p>
+                    </div>
+
+                    <Check
+                      size={17}
+                      className="
+              text-[#00A980]
+            "
+                    />
+                  </div>
+
+                  <pre
+                    className="
+            max-h-[420px]
+            overflow-auto
+            whitespace-pre-wrap
+            break-words
+            px-5
+            py-5
+            font-mono
+            text-[12px]
+            leading-6
+            text-[#505050]
+          "
+                  >
+                    {pdfPreview.cleanText ||
+                      pdfPreview.layoutText ||
+                      pdfPreview.rawText ||
+                      "No se recuperó texto legible."}
+                  </pre>
+                </div>
+              )}
+
+              <p
+                className="
+        mt-5
+        text-xs
+        text-[#999999]
+      "
+              >
+                Este paso es opcional por ahora.
+              </p>
+            </div>
+          )}
+
+          {/* ===============================================
               EXPERIENCE
           =============================================== */}
 
-          {step === 2 && (
+          {step === 3 && (
             <div
               key="experience"
               className="premium-step-enter"
             >
               <StepLabel
-                current={2}
-                total={4}
+                current={3}
+                total={5}
               />
 
               <h1
@@ -725,14 +1357,14 @@ export default function OnboardingPage() {
               INTERVIEW TYPE
           =============================================== */}
 
-          {step === 3 && (
+          {step === 4 && (
             <div
               key="type"
               className="premium-step-enter"
             >
               <StepLabel
-                current={3}
-                total={4}
+                current={4}
+                total={5}
               />
 
               <div
@@ -829,14 +1461,14 @@ export default function OnboardingPage() {
               LANGUAGE
           =============================================== */}
 
-          {step === 4 && (
+          {step === 5 && (
             <div
               key="language"
               className="premium-step-enter"
             >
               <StepLabel
-                current={4}
-                total={4}
+                current={5}
+                total={5}
               />
 
               <div
@@ -972,7 +1604,8 @@ export default function OnboardingPage() {
                 variant="ghost"
                 size="lg"
                 disabled={
-                  submitting
+                  submitting || 
+                  pdfLoading
                 }
                 onClick={
                   handleBack
@@ -1096,14 +1729,13 @@ function SelectableCard({
         transition-all
         duration-200
 
-        ${
-          selected
-            ? `
+        ${selected
+          ? `
               border-[#5547E8]
               bg-[#F7F6FF]
               shadow-[0_8px_30px_rgba(85,71,232,0.08)]
             `
-            : `
+          : `
               border-[#E5E5E8]
               bg-white
               hover:border-[#CBC7F6]
@@ -1155,14 +1787,13 @@ function SelectableCard({
             border
             transition-all
 
-            ${
-              selected
-                ? `
+            ${selected
+              ? `
                   border-[#5547E8]
                   bg-[#5547E8]
                   text-white
                 `
-                : `
+              : `
                   border-[#D7D7DC]
                   bg-white
                   text-transparent
@@ -1228,4 +1859,34 @@ function MiniFeature({
       </p>
     </div>
   );
+}
+
+function formatFileSize(
+  bytes: number
+): string {
+  if (
+    bytes < 1024
+  ) {
+    return `${bytes} B`;
+  }
+
+  if (
+    bytes <
+    1024 * 1024
+  ) {
+    return `${(
+      bytes /
+      1024
+    ).toFixed(
+      1
+    )} KB`;
+  }
+
+  return `${(
+    bytes /
+    1024 /
+    1024
+  ).toFixed(
+    1
+  )} MB`;
 }
