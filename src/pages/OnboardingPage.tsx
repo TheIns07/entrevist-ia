@@ -49,6 +49,10 @@ import {
   type AnalyzeResumeResult,
 } from "../services/ai/resume-analysis.service";
 
+import {
+  VoiceInputButton,
+} from "../components/voice";
+
 type Experience =
   | "junior"
   | "mid"
@@ -898,9 +902,8 @@ export default function OnboardingPage() {
 
               <div
                 className="
-                  mt-9
-                  space-y-5
-                "
+    space-y-2
+  "
               >
                 <Input
                   label="Puesto"
@@ -918,24 +921,6 @@ export default function OnboardingPage() {
                   }
                   placeholder="Ej. Software Engineer"
                   autoFocus
-                />
-
-                <Input
-                  label="Industria"
-                  value={
-                    industry
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setIndustry(
-                      event
-                        .target
-                        .value
-                    )
-                  }
-                  placeholder="Ej. Tecnología"
-                  helperText="Opcional"
                 />
               </div>
             </div>

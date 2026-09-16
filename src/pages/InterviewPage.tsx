@@ -13,8 +13,11 @@ import {
 import {
   AppHeader,
   Button,
-  Textarea,
 } from "../components";
+
+import {
+  InterviewAnswerInput,
+} from "../components/interview";
 
 import {
   getInterviewQuestions,
@@ -87,6 +90,14 @@ export default function InterviewPage() {
   ] = useState(false);
 
   const [
+    answerInputBusy,
+    setAnswerInputBusy,
+  ] =
+    useState(
+      false
+    );
+
+  const [
     pageError,
     setPageError,
   ] =
@@ -110,20 +121,20 @@ export default function InterviewPage() {
 
   const currentQuestion =
     questions[
-      currentQuestionIndex
+    currentQuestionIndex
     ];
 
   const currentAnswer =
     currentQuestion
       ? answers[
-          currentQuestion.id
-        ] ?? ""
+      currentQuestion.id
+      ] ?? ""
       : "";
 
   const isLastQuestion =
     questions.length > 0 &&
     currentQuestionIndex ===
-      questions.length - 1;
+    questions.length - 1;
 
   const canContinue =
     currentAnswer
@@ -133,12 +144,12 @@ export default function InterviewPage() {
   const progress =
     questions.length > 0
       ? (
-          (
-            currentQuestionIndex +
-            1
-          ) /
-          questions.length
-        ) * 100
+        (
+          currentQuestionIndex +
+          1
+        ) /
+        questions.length
+      ) * 100
       : 0;
 
   /*
@@ -215,7 +226,7 @@ export default function InterviewPage() {
             interview.status ===
             "processing" ||
             interview.status ===
-              "evaluation_failed"
+            "evaluation_failed"
           ) {
             navigate(
               `/interview/${interview.id}/processing`,
@@ -319,7 +330,7 @@ export default function InterviewPage() {
               ) => {
                 const answer =
                   answersRecord[
-                    question.id
+                  question.id
                   ];
 
                 return (
@@ -346,7 +357,7 @@ export default function InterviewPage() {
              */
             setCurrentQuestionIndex(
               interviewQuestions.length -
-                1
+              1
             );
           }
         } catch (error) {
@@ -654,7 +665,7 @@ export default function InterviewPage() {
           ) =>
             Math.min(
               questions.length -
-                1,
+              1,
               current + 1
             )
         );
@@ -737,7 +748,7 @@ export default function InterviewPage() {
   const saveStatusText =
     useMemo(() => {
       switch (
-        saveStatus
+      saveStatus
       ) {
         case "saving":
           return "Guardando...";
@@ -877,13 +888,13 @@ export default function InterviewPage() {
     currentQuestion
       .estimated_seconds
       ? Math.max(
-          1,
-          Math.round(
-            currentQuestion
-              .estimated_seconds /
-              60
-          )
+        1,
+        Math.round(
+          currentQuestion
+            .estimated_seconds /
+          60
         )
+      )
       : 2;
 
   /*
@@ -966,7 +977,7 @@ export default function InterviewPage() {
             >
               {String(
                 currentQuestionIndex +
-                  1
+                1
               ).padStart(
                 2,
                 "0"
@@ -995,11 +1006,10 @@ export default function InterviewPage() {
                 text-xs
                 transition-colors
 
-                ${
-                  saveStatus ===
+                ${saveStatus ===
                   "error"
-                    ? "text-red-500"
-                    : "text-[#999999]"
+                  ? "text-red-500"
+                  : "text-[#999999]"
                 }
               `}
             >
@@ -1081,32 +1091,40 @@ export default function InterviewPage() {
               Tiempo sugerido:{" "}
               {estimatedMinutes}{" "}
               {estimatedMinutes ===
-              1
+                1
                 ? "minuto"
                 : "minutos"}
             </p>
           </section>
 
-          {/* ANSWER */}
-          <div className="mt-8">
-            <Textarea
+          {/* ===============================================
+    ANSWER
+=============================================== */}
+
+          <div
+            className="
+    mt-8
+  "
+          >
+            <InterviewAnswerInput
               value={
                 currentAnswer
               }
-              onChange={(
-                event
-              ) =>
-                handleAnswerChange(
-                  event.target.value
-                )
+              onChange={
+                handleAnswerChange
               }
-              placeholder="Escribe tu respuesta..."
+              language={
+                session.language
+              }
               maxLength={
                 1200
               }
-              showCount
-              size="lg"
-              aria-label="Respuesta de la entrevista"
+              disabled={
+                finishing
+              }
+              onBusyChange={
+                setAnswerInputBusy
+              }
             />
           </div>
 
@@ -1154,7 +1172,8 @@ export default function InterviewPage() {
               disabled={
                 currentQuestionIndex ===
                   0 ||
-                finishing
+                finishing ||
+                answerInputBusy
               }
               onClick={
                 handlePrevious
@@ -1173,6 +1192,7 @@ export default function InterviewPage() {
               disabled={
                 !canContinue ||
                 finishing ||
+                answerInputBusy ||
                 saveStatus ===
                   "saving"
               }

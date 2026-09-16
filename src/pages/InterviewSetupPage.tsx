@@ -4,6 +4,11 @@ import {
 } from "react";
 
 import {
+  Mic,
+  Mic2,
+} from "lucide-react";
+
+import {
   useNavigate,
   useParams,
 } from "react-router-dom";
@@ -15,16 +20,18 @@ import {
 } from "../components";
 
 import {
+  useMicrophoneCheck,
+} from "../hooks/useMicrophoneCheck";
+
+import {
   getInterviewSession,
   startInterviewSession,
   type InterviewSession,
 } from "../services/interviews";
-import { ensureInterviewQuestions } from "../services/questions";
 
-type MicrophoneStatus =
-  | "pending"
-  | "checking"
-  | "ready";
+import {
+  ensureInterviewQuestions,
+} from "../services/questions";
 
 const experienceLabels = {
   junior: "Inicial",
@@ -45,13 +52,16 @@ const languageLabels = {
 };
 
 export default function InterviewSetupPage() {
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
 
   const {
     sessionId,
-  } = useParams<{
-    sessionId: string;
-  }>();
+  } =
+    useParams<{
+      sessionId:
+        string;
+    }>();
 
   const [
     session,
@@ -64,115 +74,264 @@ export default function InterviewSetupPage() {
   const [
     loading,
     setLoading,
-  ] = useState(true);
+  ] =
+    useState(
+      true
+    );
 
   const [
     starting,
     setStarting,
-  ] = useState(false);
+  ] =
+    useState(
+      false
+    );
 
   const [
     pageError,
     setPageError,
   ] =
-    useState<string | null>(null);
-
-  const [
-    microphoneStatus,
-    setMicrophoneStatus,
-  ] =
-    useState<MicrophoneStatus>(
-      "pending"
+    useState<string | null>(
+      null
     );
 
-  useEffect(() => {
-    if (!sessionId) {
-      navigate(
-        "/onboarding",
-        {
-          replace: true,
-        }
-      );
+  const {
+    status:
+      microphoneStatus,
 
-      return;
-    }
+    level:
+      microphoneLevel,
 
-    const loadSession = async () => {
+    error:
+      microphoneError,
+
+    start:
+      startMicrophoneCheck,
+
+    stop:
+      stopMicrophoneCheck,
+  } =
+    useMicrophoneCheck();
+
+  /*
+   * =========================================================
+   * CARGAR ENTREVISTA
+   * =========================================================
+   */
+
+  useEffect(
+    () => {
+      if (
+        !sessionId
+      ) {
+        navigate(
+          "/onboarding",
+          {
+            replace:
+              true,
+          }
+        );
+
+        return;
+      }
+
+      let active =
+        true;
+
+      const loadSession =
+        async (): Promise<void> => {
+          try {
+            setLoading(
+              true
+            );
+
+            setPageError(
+              null
+            );
+
+            /*
+             * Primero comprobamos
+             * que la entrevista exista.
+             */
+            const interview =
+              await getInterviewSession(
+                sessionId
+              );
+
+            if (
+              !active
+            ) {
+              return;
+            }
+
+            setSession(
+              interview
+            );
+
+            /*
+             * Después preparamos
+             * las preguntas.
+             *
+             * Si esto falla,
+             * NO significa que la
+             * entrevista no exista.
+             */
+            try {
+              await ensureInterviewQuestions(
+                interview.id
+              );
+            } catch (
+              questionError
+            ) {
+              console.error(
+                "Error preparando preguntas:",
+                questionError
+              );
+
+              if (
+                active
+              ) {
+                setPageError(
+                  "Encontramos la entrevista, pero no pudimos preparar las preguntas. Intenta nuevamente."
+                );
+              }
+            }
+          } catch (
+            error
+          ) {
+            console.error(
+              "Error cargando entrevista:",
+              error
+            );
+
+            if (
+              !active
+            ) {
+              return;
+            }
+
+            setSession(
+              null
+            );
+
+            setPageError(
+              "No pudimos encontrar esta entrevista."
+            );
+          } finally {
+            if (
+              active
+            ) {
+              setLoading(
+                false
+              );
+            }
+          }
+        };
+
+      void loadSession();
+
+      return () => {
+        active =
+          false;
+      };
+    },
+    [
+      sessionId,
+      navigate,
+    ]
+  );
+
+  /*
+   * =========================================================
+   * COMPROBAR MICRÓFONO
+   * =========================================================
+   */
+
+  const handleMicrophoneCheck =
+    async (): Promise<void> => {
       try {
-        setLoading(true);
-
-        const interview =
-          await getInterviewSession(
-            sessionId
-          );
-
-        await ensureInterviewQuestions(
-          interview.id
+        await startMicrophoneCheck();
+      } catch (
+        error
+      ) {
+        console.error(
+          "Error comprobando micrófono:",
+          error
         );
-
-        setSession(interview);
-
-        setPageError(
-          "No pudimos encontrar esta entrevista."
-        );
-      } finally {
-        setLoading(false);
       }
     };
 
-    loadSession();
-  }, [
-    sessionId,
-    navigate,
-  ]);
+  /*
+   * =========================================================
+   * INICIAR ENTREVISTA
+   * =========================================================
+   */
 
-  const checkMicrophone = () => {
-    setMicrophoneStatus(
-      "checking"
-    );
+  const handleStart =
+    async (): Promise<void> => {
+      if (
+        !session ||
+        microphoneStatus !==
+          "ready" ||
+        starting
+      ) {
+        return;
+      }
 
-    window.setTimeout(() => {
-      setMicrophoneStatus(
-        "ready"
-      );
-    }, 1200);
-  };
+      try {
+        setStarting(
+          true
+        );
 
-  const handleStart = async () => {
-    if (
-      !session ||
-      microphoneStatus !== "ready" ||
-      starting
-    ) {
-      return;
-    }
+        setPageError(
+          null
+        );
 
-    try {
-      setStarting(true);
-      setPageError(null);
+        /*
+         * Ya comprobamos el audio.
+         * Cerramos el stream antes
+         * de cambiar de pantalla.
+         *
+         * La pantalla de entrevista
+         * volverá a abrir el micrófono
+         * cuando sea necesario.
+         */
+        stopMicrophoneCheck();
 
-      await startInterviewSession(
-        session.id
-      );
+        await startInterviewSession(
+          session.id
+        );
 
-      navigate(
-        `/interview/${session.id}`
-      );
-    } catch (error) {
-      console.error(
-        "Error iniciando entrevista:",
+        navigate(
+          `/interview/${session.id}`
+        );
+      } catch (
         error
-      );
+      ) {
+        console.error(
+          "Error iniciando entrevista:",
+          error
+        );
 
-      setPageError(
-        "No pudimos iniciar la entrevista. Intenta nuevamente."
-      );
-    } finally {
-      setStarting(false);
-    }
-  };
+        setPageError(
+          "No pudimos iniciar la entrevista. Intenta nuevamente."
+        );
+      } finally {
+        setStarting(
+          false
+        );
+      }
+    };
 
-  if (loading) {
+  /*
+   * =========================================================
+   * LOADING
+   * =========================================================
+   */
+
+  if (
+    loading
+  ) {
     return (
       <div
         className="
@@ -198,17 +357,33 @@ export default function InterviewSetupPage() {
     );
   }
 
+  /*
+   * =========================================================
+   * SESIÓN NO ENCONTRADA
+   * =========================================================
+   */
+
   if (
     pageError &&
     !session
   ) {
     return (
-      <div className="min-h-screen bg-[#F7F8FA]">
+      <div
+        className="
+          min-h-screen
+          bg-[#F7F8FA]
+        "
+      >
         <AppHeader
           backTo="/onboarding"
         />
 
-        <main className="px-5 py-20">
+        <main
+          className="
+            px-5
+            py-20
+          "
+        >
           <div
             className="
               mx-auto
@@ -236,7 +411,11 @@ export default function InterviewSetupPage() {
               {pageError}
             </p>
 
-            <div className="mt-8">
+            <div
+              className="
+                mt-8
+              "
+            >
               <Button
                 onClick={() =>
                   navigate(
@@ -253,9 +432,17 @@ export default function InterviewSetupPage() {
     );
   }
 
-  if (!session) {
+  if (
+    !session
+  ) {
     return null;
   }
+
+  /*
+   * =========================================================
+   * UI
+   * =========================================================
+   */
 
   return (
     <div
@@ -273,6 +460,7 @@ export default function InterviewSetupPage() {
           px-5
           pb-16
           pt-8
+
           sm:px-8
           sm:pt-12
         "
@@ -284,6 +472,10 @@ export default function InterviewSetupPage() {
             max-w-[620px]
           "
         >
+          {/* ===============================================
+              HEADER
+          =============================================== */}
+
           <header>
             <p
               className="
@@ -304,6 +496,7 @@ export default function InterviewSetupPage() {
                 font-bold
                 tracking-[-0.035em]
                 text-[#252525]
+
                 sm:text-[38px]
               "
             >
@@ -319,10 +512,14 @@ export default function InterviewSetupPage() {
                 text-[#777777]
               "
             >
-              Revisa la configuración antes
-              de comenzar.
+              Revisa la configuración
+              antes de comenzar.
             </p>
           </header>
+
+          {/* ===============================================
+              RESUMEN
+          =============================================== */}
 
           <section
             className="
@@ -332,6 +529,7 @@ export default function InterviewSetupPage() {
               border-[#E7E7E7]
               bg-white
               p-5
+
               sm:p-6
             "
           >
@@ -383,6 +581,10 @@ export default function InterviewSetupPage() {
             />
           </section>
 
+          {/* ===============================================
+              COMPROBACIÓN REAL DE MICRÓFONO
+          =============================================== */}
+
           <section
             className="
               mt-5
@@ -391,6 +593,7 @@ export default function InterviewSetupPage() {
               border-[#E7E7E7]
               bg-white
               p-5
+
               sm:p-6
             "
           >
@@ -413,40 +616,128 @@ export default function InterviewSetupPage() {
               "
             >
               Antes de comenzar,
-              comprobaremos que todo esté
-              listo para tu sesión.
+              comprobaremos que podemos
+              escucharte correctamente.
             </p>
 
-            <div className="mt-5">
-              {microphoneStatus ===
-                "pending" && (
+            {/* IDLE */}
+
+            {microphoneStatus ===
+              "idle" && (
+              <div
+                className="
+                  mt-5
+                "
+              >
                 <Button
                   variant="outline"
-                  onClick={
-                    checkMicrophone
-                  }
+                  onClick={() => {
+                    void handleMicrophoneCheck();
+                  }}
                 >
-                  Comprobar micrófono
-                </Button>
-              )}
+                  <span
+                    className="
+                      flex
+                      items-center
+                      gap-2
+                    "
+                  >
+                    <Mic
+                      size={16}
+                    />
 
-              {microphoneStatus ===
-                "checking" && (
-                <p
+                    Probar micrófono
+                  </span>
+                </Button>
+              </div>
+            )}
+
+            {/* CHECKING */}
+
+            {microphoneStatus ===
+              "checking" && (
+              <div
+                className="
+                  mt-5
+                "
+              >
+                <div
                   className="
-                    text-sm
-                    font-medium
-                    text-[#5547E8]
+                    flex
+                    items-center
+                    gap-2
                   "
                 >
-                  Comprobando...
-                </p>
-              )}
+                  <Mic2
+                    size={17}
+                    className="
+                      text-[#5547E8]
+                    "
+                  />
 
-              {microphoneStatus ===
-                "ready" && (
+                  <p
+                    className="
+                      text-sm
+                      font-medium
+                      text-[#5547E8]
+                    "
+                  >
+                    Habla para comprobar
+                    tu micrófono...
+                  </p>
+                </div>
+
+                <AudioLevel
+                  level={
+                    microphoneLevel
+                  }
+                />
+              </div>
+            )}
+
+            {/* READY */}
+
+            {microphoneStatus ===
+              "ready" && (
+              <div
+                className="
+                  mt-5
+                "
+              >
+                <div
+                  className="
+                    flex
+                    items-center
+                    gap-2
+                  "
+                >
+                  <Mic2
+                    size={17}
+                    className="
+                      text-[#00A980]
+                    "
+                  />
+
+                  <p
+                    className="
+                      text-sm
+                      font-semibold
+                      text-[#00A980]
+                    "
+                  >
+                    Micrófono detectado.
+                  </p>
+                </div>
+
+                <AudioLevel
+                  level={
+                    microphoneLevel
+                  }
+                />
+
                 <p
                   className="
+                    mt-3
                     text-sm
                     font-semibold
                     text-[#00A980]
@@ -454,9 +745,50 @@ export default function InterviewSetupPage() {
                 >
                   Todo está listo.
                 </p>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* ERROR */}
+
+            {microphoneStatus ===
+              "error" && (
+              <div
+                className="
+                  mt-5
+                "
+              >
+                <p
+                  className="
+                    text-sm
+                    leading-6
+                    text-red-600
+                  "
+                >
+                  {microphoneError ||
+                    "No pudimos acceder al micrófono."}
+                </p>
+
+                <div
+                  className="
+                    mt-4
+                  "
+                >
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      void handleMicrophoneCheck();
+                    }}
+                  >
+                    Reintentar
+                  </Button>
+                </div>
+              </div>
+            )}
           </section>
+
+          {/* ===============================================
+              ERROR GENERAL
+          =============================================== */}
 
           {pageError && (
             <div
@@ -470,21 +802,40 @@ export default function InterviewSetupPage() {
                 py-3
               "
             >
-              <p className="text-sm text-red-700">
+              <p
+                className="
+                  text-sm
+                  leading-6
+                  text-red-700
+                "
+              >
                 {pageError}
               </p>
             </div>
           )}
 
-          <div className="mt-8">
+          {/* ===============================================
+              START
+          =============================================== */}
+
+          <div
+            className="
+              mt-8
+            "
+          >
             <Button
               size="lg"
               fullWidth
-              loading={starting}
+              loading={
+                starting
+              }
               disabled={
                 microphoneStatus !==
                   "ready" ||
-                starting
+                starting ||
+                Boolean(
+                  pageError
+                )
               }
               onClick={
                 handleStart
@@ -492,9 +843,94 @@ export default function InterviewSetupPage() {
             >
               Comenzar entrevista
             </Button>
+
+            {microphoneStatus !==
+              "ready" &&
+              !microphoneError && (
+                <p
+                  className="
+                    mt-3
+                    text-center
+                    text-xs
+                    leading-5
+                    text-[#999999]
+                  "
+                >
+                  Comprueba tu micrófono
+                  para poder comenzar.
+                </p>
+              )}
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+/*
+ * =========================================================
+ * AUDIO LEVEL
+ * =========================================================
+ */
+
+interface AudioLevelProps {
+  level:
+    number;
+}
+
+function AudioLevel({
+  level,
+}: AudioLevelProps) {
+  const percentage =
+    Math.max(
+      2,
+      Math.min(
+        100,
+        level *
+          100
+      )
+    );
+
+  return (
+    <div
+      className="
+        mt-4
+      "
+    >
+      <div
+        className="
+          h-2
+          w-full
+          overflow-hidden
+          rounded-full
+          bg-[#EEEEF2]
+        "
+      >
+        <div
+          className="
+            h-full
+            rounded-full
+            bg-[#5547E8]
+            transition-[width]
+            duration-75
+          "
+          style={{
+            width:
+              `${percentage}%`,
+          }}
+        />
+      </div>
+
+      <p
+        className="
+          mt-2
+          text-xs
+          text-[#999999]
+        "
+      >
+        Habla normalmente y observa
+        el nivel de entrada.
+      </p>
     </div>
   );
 }
