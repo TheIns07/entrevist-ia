@@ -40,12 +40,14 @@ import {
 
 import {
   extractPdfTextPreview,
+  type PdfExtractionProgress,
   type PdfTextPreviewResult,
 } from "../services/pdf.service";
 
-import type {
-  PdfProbeProgress,
-} from "../lib/pdf-engine/content/RawTextProbe";
+import {
+  analyzeResume,
+  type AnalyzeResumeResult,
+} from "../services/ai/resume-analysis.service";
 
 type Experience =
   | "junior"
@@ -209,13 +211,7 @@ export default function OnboardingPage() {
     null
   );
 
-  const [
-    pdfPreview,
-    setPdfPreview,
-  ] =
-    useState<PdfTextPreviewResult | null>(
-      null
-    );
+  const [, setPdfPreview] = useState<PdfTextPreviewResult | null>(null);
 
   const [
     pdfLoading,
@@ -229,12 +225,35 @@ export default function OnboardingPage() {
     useState<string | null>(
       null
     );
-
   const [
     pdfProgress,
     setPdfProgress,
   ] =
-    useState<PdfProbeProgress | null>(
+    useState<PdfExtractionProgress | null>(
+      null
+    );
+
+  const [
+    resumeAnalysis,
+    setResumeAnalysis,
+  ] =
+    useState<AnalyzeResumeResult | null>(
+      null
+    );
+
+  const [
+    resumeAnalysisLoading,
+    setResumeAnalysisLoading,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    resumeAnalysisError,
+    setResumeAnalysisError,
+  ] =
+    useState<string | null>(
       null
     );
 
@@ -325,6 +344,12 @@ export default function OnboardingPage() {
 
       setPdfLoading(true);
 
+      setResumeAnalysis(null);
+
+      setResumeAnalysisError(null);
+
+      setResumeAnalysisLoading(false);
+
       setPdfProgress({
         stage: "starting",
         message:
@@ -414,6 +439,67 @@ export default function OnboardingPage() {
           "=============================="
         );
 
+        setResumeAnalysisLoading(
+          true
+        );
+
+        setResumeAnalysisError(
+          null
+        );
+
+        try {
+          const analysis =
+            await analyzeResume(
+              result.aiText
+            );
+
+          setResumeAnalysis(
+            analysis
+          );
+
+          console.log(
+            "=============================="
+          );
+
+          console.log(
+            "[EntrevistIA] GROQ ANALYSIS"
+          );
+
+          console.log(
+            "=============================="
+          );
+
+          console.log(
+            analysis.analysis
+          );
+
+          console.log(
+            "[EntrevistIA] GROQ USAGE"
+          );
+
+          console.log(
+            analysis.usage
+          );
+        } catch (
+        error
+        ) {
+          console.error(
+            "[EntrevistIA] AI analysis failed:",
+            error
+          );
+
+          setResumeAnalysisError(
+            error instanceof
+              Error
+              ? error.message
+              : "No fue posible analizar el CV."
+          );
+        } finally {
+          setResumeAnalysisLoading(
+            false
+          );
+        }
+
         console.table(
           result.removedFragments
         );
@@ -456,6 +542,12 @@ export default function OnboardingPage() {
       setPdfError(null);
 
       setPdfProgress(null);
+
+      setResumeAnalysis(null);
+
+      setResumeAnalysisError(null);
+
+      setResumeAnalysisLoading(false);
     };
 
   /*
@@ -1181,80 +1273,133 @@ export default function OnboardingPage() {
                 </div>
               )}
 
-              {pdfPreview && (
+              {resumeAnalysisLoading && (
                 <div
                   className="
-          mt-5
-          overflow-hidden
-          rounded-2xl
-          border
-          border-[#E4E4E8]
-          bg-white
-        "
+      mt-5
+      rounded-2xl
+      border
+      border-[#E4E4E8]
+      bg-white
+      px-5
+      py-5
+    "
                 >
                   <div
                     className="
-            flex
-            items-center
-            justify-between
-            border-b
-            border-[#EEEEF1]
-            px-5
-            py-4
-          "
+        flex
+        items-center
+        gap-2
+      "
                   >
-                    <div>
-                      <p
-                        className="
-                text-sm
-                font-semibold
-                text-[#303030]
-              "
-                      >
-                        Texto obtenido
-                      </p>
-
-                      <p
-                        className="
-                mt-1
-                text-xs
-                text-[#999999]
-              "
-                      >
-                        {pdfPreview.pageCount}{" "}
-                        {pdfPreview.pageCount === 1
-                          ? "página"
-                          : "páginas"}
-                      </p>
-                    </div>
-
-                    <Check
-                      size={17}
+                    <LoaderCircle
+                      size={16}
                       className="
-              text-[#00A980]
-            "
+          animate-spin
+          text-[#5547E8]
+        "
                     />
+
+                    <p
+                      className="
+          text-sm
+          font-medium
+          text-[#5547E8]
+        "
+                    >
+                      Analizando CV con IA...
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {resumeAnalysisError && (
+                <div
+                  className="
+      mt-5
+      rounded-xl
+      border
+      border-red-200
+      bg-red-50
+      px-4
+      py-3
+    "
+                >
+                  <p
+                    className="
+        text-sm
+        leading-6
+        text-red-700
+      "
+                  >
+                    {resumeAnalysisError}
+                  </p>
+                </div>
+              )}
+
+              {resumeAnalysis && (
+                <div
+                  className="
+      mt-5
+      overflow-hidden
+      rounded-2xl
+      border
+      border-[#E4E4E8]
+      bg-white
+    "
+                >
+                  <div
+                    className="
+        border-b
+        border-[#EEEEF1]
+        px-5
+        py-4
+      "
+                  >
+                    <p
+                      className="
+          text-sm
+          font-semibold
+          text-[#303030]
+        "
+                    >
+                      Esto entendió la IA
+                    </p>
+
+                    <p
+                      className="
+          mt-1
+          text-xs
+          text-[#999999]
+        "
+                    >
+                      {resumeAnalysis.model}
+                      {" · "}
+                      {resumeAnalysis.usage.totalTokens ??
+                        "?"}{" "}
+                      tokens
+                    </p>
                   </div>
 
                   <pre
                     className="
-            max-h-[420px]
-            overflow-auto
-            whitespace-pre-wrap
-            break-words
-            px-5
-            py-5
-            font-mono
-            text-[12px]
-            leading-6
-            text-[#505050]
-          "
+        max-h-[420px]
+        overflow-auto
+        whitespace-pre-wrap
+        break-words
+        px-5
+        py-5
+        font-mono
+        text-[12px]
+        leading-6
+        text-[#505050]
+      "
                   >
-                    {pdfPreview.aiText ||
-                      pdfPreview.cleanText ||
-                      pdfPreview.layoutText ||
-                      pdfPreview.rawText ||
-                      "No se recuperó texto legible."}
+                    {JSON.stringify(
+                      resumeAnalysis.analysis,
+                      null,
+                      2
+                    )}
                   </pre>
                 </div>
               )}
@@ -1605,7 +1750,7 @@ export default function OnboardingPage() {
                 variant="ghost"
                 size="lg"
                 disabled={
-                  submitting || 
+                  submitting ||
                   pdfLoading
                 }
                 onClick={

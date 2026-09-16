@@ -6,192 +6,351 @@ import {
   PdfEngineError,
 } from "../lib/pdf-engine/errors";
 
-import {
-  extractRawTextProbe,
-  type PdfProbeProgressCallback,
-  type PdfTextProbeResult,
-} from "../lib/pdf-engine/content/RawTextProbe";
+import type {
+  PdfDocumentResult,
+  PdfExtractionProgressCallback,
+  PdfWorkerExtractRequest,
+  PdfWorkerResponse,
+} from "../lib/pdf-engine/public-types";
 
-export interface PdfTextPreviewResult
-  extends PdfTextProbeResult {
-  fileName: string;
+export type {
+  PdfDocumentResult,
+  PdfExtractionProgress,
+  PdfExtractionProgressCallback,
+} from "../lib/pdf-engine/public-types";
 
-  fileSize: number;
+/*
+ * =========================================================
+ * COMPATIBILIDAD CON EL ONBOARDING ACTUAL
+ * =========================================================
+ */
+
+export type PdfTextPreviewResult =
+  PdfDocumentResult;
+
+export interface ExtractPdfOptions {
+  onProgress?:
+    PdfExtractionProgressCallback;
+
+  signal?:
+    AbortSignal;
 }
 
-export async function extractPdfTextPreview(
-  file: File,
-  onProgress?: PdfProbeProgressCallback
-): Promise<PdfTextPreviewResult> {
-  console.group(
-    `[PDF Engine] ${file.name}`
+/*
+ * =========================================================
+ * API PÚBLICA
+ * =========================================================
+ */
+
+export async function extractPdf(
+  file:
+    File,
+
+  options:
+    ExtractPdfOptions = {}
+): Promise<PdfDocumentResult> {
+  const {
+    onProgress,
+    signal,
+  } = options;
+
+  throwIfAborted(
+    signal
   );
 
-  console.log(
-    "Tamaño:",
-    file.size,
-    "bytes"
-  );
+  onProgress?.({
+    stage:
+      "starting",
 
-  console.log(
-    "MIME:",
-    file.type
-  );
+    message:
+      "Validando archivo...",
 
-  console.log(
-    "[PDF Engine] 1. Validando archivo..."
-  );
+    progress:
+      1,
+  });
 
   validatePdfFile(
     file
-  );
-
-  console.log(
-    "[PDF Engine] 2. Validando cabecera..."
   );
 
   await validatePdfHeader(
     file
   );
 
-  console.log(
-    "[PDF Engine] Cabecera PDF válida."
+  throwIfAborted(
+    signal
   );
 
-  console.log(
-    "[PDF Engine] 3. Leyendo ArrayBuffer..."
-  );
+  onProgress?.({
+    stage:
+      "starting",
+
+    message:
+      "Leyendo archivo...",
+
+    progress:
+      3,
+  });
 
   const buffer =
     await file.arrayBuffer();
 
-  console.log(
-    "[PDF Engine] ArrayBuffer:",
-    buffer.byteLength,
-    "bytes"
+  throwIfAborted(
+    signal
   );
 
-  console.log(
-    "[PDF Engine] 4. Iniciando extractor..."
+  return runPdfWorker(
+    buffer,
+    file,
+    options
   );
-
-  try {
-    const result =
-      await extractRawTextProbe(
-        buffer,
-        onProgress
-      );
-
-      console.log(
-        "=============================="
-      );
-      
-      console.log(
-        "RAW TEXT FINAL"
-      );
-      
-      console.log(
-        "=============================="
-      );
-      
-      console.log(
-        result.rawText
-      );
-      
-      console.log(
-        "=============================="
-      );
-      
-      console.log(
-        "LAYOUT TEXT FINAL"
-      );
-      
-      console.log(
-        "=============================="
-      );
-      
-      console.log(
-        result.layoutText
-      );
-      
-      console.log(
-        "=============================="
-      );
-      
-      console.log(
-        "CLEAN TEXT FINAL"
-      );
-      
-      console.log(
-        "=============================="
-      );
-      
-      console.log(
-        result.cleanText
-      );
-      
-      console.log(
-        "=============================="
-      );
-      
-      console.log(
-        "CLEANING INFO"
-      );
-      
-      console.log(
-        "=============================="
-      );
-      
-      console.log(
-        {
-          rawLength:
-            result.rawText.length,
-      
-          layoutLength:
-            result.layoutText.length,
-      
-          cleanLength:
-            result.cleanText.length,
-      
-          removedFragments:
-            result.removedFragments.length,
-        }
-      );
-      
-      console.table(
-        result.removedFragments
-      );
-      
-      console.log(
-        "Warnings:",
-        result.warnings
-      );
-
-    return {
-      ...result,
-
-      fileName:
-        file.name,
-
-      fileSize:
-        file.size,
-    };
-  } catch (
-    error
-  ) {
-    console.error(
-      "[PDF Engine] Extracción falló:",
-      error
-    );
-
-    throw error;
-  } finally {
-    console.groupEnd();
-  }
 }
 
+/*
+ * =========================================================
+ * API TEMPORAL ANTERIOR
+ * =========================================================
+ *
+ * La conservamos para no obligarte
+ * todavía a modificar OnboardingPage.
+ *
+ * Internamente ya usa el Web Worker
+ * y el motor definitivo.
+ * =========================================================
+ */
+
+export async function extractPdfTextPreview(
+  file:
+    File,
+
+  onProgress?:
+    PdfExtractionProgressCallback
+): Promise<PdfTextPreviewResult> {
+  return extractPdf(
+    file,
+    {
+      onProgress,
+    }
+  );
+}
+
+/*
+ * =========================================================
+ * WORKER
+ * =========================================================
+ */
+
+function runPdfWorker(
+  buffer:
+    ArrayBuffer,
+
+  file:
+    File,
+
+  options:
+    ExtractPdfOptions
+): Promise<PdfDocumentResult> {
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+      const worker =
+        new Worker(
+          new URL(
+            "../workers/pdf.worker.ts",
+            import.meta.url
+          ),
+          {
+            type:
+              "module",
+          }
+        );
+
+      let settled =
+        false;
+
+      const cleanup =
+        (): void => {
+          worker.terminate();
+
+          options.signal
+            ?.removeEventListener(
+              "abort",
+              handleAbort
+            );
+        };
+
+      const resolveOnce =
+        (
+          result:
+            PdfDocumentResult
+        ): void => {
+          if (
+            settled
+          ) {
+            return;
+          }
+
+          settled =
+            true;
+
+          cleanup();
+
+          resolve(
+            result
+          );
+        };
+
+      const rejectOnce =
+        (
+          error:
+            unknown
+        ): void => {
+          if (
+            settled
+          ) {
+            return;
+          }
+
+          settled =
+            true;
+
+          cleanup();
+
+          reject(
+            error
+          );
+        };
+
+      const handleAbort =
+        (): void => {
+          rejectOnce(
+            createAbortError()
+          );
+        };
+
+      worker.onmessage =
+        (
+          event:
+            MessageEvent<PdfWorkerResponse>
+        ) => {
+          const response =
+            event.data;
+
+          switch (
+            response.type
+          ) {
+            case "progress":
+              options.onProgress?.(
+                response.progress
+              );
+
+              return;
+
+            case "result":
+              resolveOnce(
+                response.result
+              );
+
+              return;
+
+            case "error":
+              rejectOnce(
+                deserializeWorkerError(
+                  response.error
+                )
+              );
+
+              return;
+
+            default:
+              return;
+          }
+        };
+
+      worker.onerror =
+        (
+          event:
+            ErrorEvent
+        ) => {
+          rejectOnce(
+            new PdfEngineError(
+              "UNKNOWN",
+              event.message ||
+                "El Web Worker del motor PDF falló."
+            )
+          );
+        };
+
+      options.signal
+        ?.addEventListener(
+          "abort",
+          handleAbort,
+          {
+            once:
+              true,
+          }
+        );
+
+      if (
+        options.signal
+          ?.aborted
+      ) {
+        handleAbort();
+
+        return;
+      }
+
+      const request:
+        PdfWorkerExtractRequest = {
+          type:
+            "extract",
+
+          buffer,
+
+          source: {
+            fileName:
+              file.name,
+
+            fileSize:
+              file.size,
+
+            mimeType:
+              file.type,
+
+            lastModified:
+              file.lastModified,
+          },
+        };
+
+      /*
+       * IMPORTANTE:
+       *
+       * Transferimos ownership del
+       * ArrayBuffer al worker.
+       *
+       * No se clona el PDF completo.
+       */
+      worker.postMessage(
+        request,
+        [
+          buffer,
+        ]
+      );
+    }
+  );
+}
+
+/*
+ * =========================================================
+ * VALIDACIÓN
+ * =========================================================
+ */
+
 function validatePdfFile(
-  file: File
+  file:
+    File
 ): void {
   if (
     file.size ===
@@ -209,6 +368,7 @@ function validatePdfFile(
   ) {
     throw new PdfEngineError(
       "INVALID_PDF",
+
       `El archivo supera el límite actual de ${Math.round(
         DEFAULT_MAX_PDF_SIZE_BYTES /
           1024 /
@@ -230,7 +390,8 @@ function validatePdfFile(
 }
 
 async function validatePdfHeader(
-  file: File
+  file:
+    File
 ): Promise<void> {
   const headerBuffer =
     await file
@@ -245,20 +406,19 @@ async function validatePdfHeader(
       headerBuffer
     );
 
-  const signature = [
-    0x25,
-    0x50,
-    0x44,
-    0x46,
-    0x2d,
-  ];
+  const signature =
+    [
+      0x25,
+      0x50,
+      0x44,
+      0x46,
+      0x2d,
+    ];
 
-  let found =
-    false;
-
-  const maxOffset =
+  const maximumOffset =
     Math.max(
       0,
+
       Math.min(
         bytes.length -
           signature.length,
@@ -269,7 +429,7 @@ async function validatePdfHeader(
   for (
     let offset = 0;
     offset <=
-    maxOffset;
+    maximumOffset;
     offset += 1
   ) {
     let matches =
@@ -286,7 +446,9 @@ async function validatePdfHeader(
           offset +
             index
         ] !==
-        signature[index]
+        signature[
+          index
+        ]
       ) {
         matches =
           false;
@@ -295,18 +457,69 @@ async function validatePdfHeader(
       }
     }
 
-    if (matches) {
-      found =
-        true;
-
-      break;
+    if (
+      matches
+    ) {
+      return;
     }
   }
 
-  if (!found) {
-    throw new PdfEngineError(
-      "INVALID_PDF",
-      "No se encontró una cabecera %PDF válida."
-    );
+  throw new PdfEngineError(
+    "INVALID_PDF",
+    "No se encontró una cabecera %PDF válida."
+  );
+}
+
+/*
+ * =========================================================
+ * ERROR DEL WORKER
+ * =========================================================
+ */
+
+function deserializeWorkerError(
+  error: {
+    code:
+      string;
+
+    message:
+      string;
   }
+): PdfEngineError {
+  type PdfErrorCode =
+    ConstructorParameters<
+      typeof PdfEngineError
+    >[0];
+
+  return new PdfEngineError(
+    error.code as
+      PdfErrorCode,
+
+    error.message
+  );
+}
+
+/*
+ * =========================================================
+ * ABORT
+ * =========================================================
+ */
+
+function throwIfAborted(
+  signal:
+    AbortSignal |
+    undefined
+): void {
+  if (
+    signal?.aborted
+  ) {
+    throw createAbortError();
+  }
+}
+
+function createAbortError():
+  DOMException {
+  return new DOMException(
+    "La extracción del PDF fue cancelada.",
+    "AbortError"
+  );
 }
