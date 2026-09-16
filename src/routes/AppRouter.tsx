@@ -24,19 +24,29 @@ export default function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* ===============================================
+            RUTAS PÚBLICAS
+        =============================================== */}
+
         <Route
           path="/"
-          element={<LandingPage />}
+          element={
+            <LandingPage />
+          }
         />
 
         <Route
           path="/register"
-          element={<RegisterPage />}
+          element={
+            <RegisterPage />
+          }
         />
 
         <Route
           path="/login"
-          element={<LoginPage />}
+          element={
+            <LoginPage />
+          }
         />
 
         <Route
@@ -48,21 +58,46 @@ export default function AppRouter() {
 
         <Route
           path="/terms"
-          element={<TermsPage />}
+          element={
+            <TermsPage />
+          }
         />
 
         <Route
           path="/privacy"
-          element={<PrivacyPage />}
+          element={
+            <PrivacyPage />
+          }
         />
 
+        {/* ===============================================
+            RUTAS PROTEGIDAS
+        =============================================== */}
+
         <Route
-          element={<ProtectedRoute />}
+          element={
+            <ProtectedRoute />
+          }
         >
+          {/* DASHBOARD */}
+
+          <Route
+            path="/dashboard"
+            element={
+              <DashboardPage />
+            }
+          />
+
+          {/* ONBOARDING */}
+
           <Route
             path="/onboarding"
-            element={<OnboardingPage />}
+            element={
+              <OnboardingPage />
+            }
           />
+
+          {/* SETUP DE ENTREVISTA */}
 
           <Route
             path="/interview/setup/:sessionId"
@@ -71,26 +106,37 @@ export default function AppRouter() {
             }
           />
 
+          {/* ENTREVISTA */}
+
           <Route
             path="/interview/:sessionId"
-            element={<InterviewPage />}
+            element={
+              <InterviewPage />
+            }
           />
-          
+
+          {/* PROCESAMIENTO */}
+
           <Route
             path="/interview/:sessionId/processing"
-            element={<ProcessingPage />}
+            element={
+              <ProcessingPage />
+            }
           />
+
+          {/* RESULTADOS */}
 
           <Route
             path="/interview/:sessionId/results"
-            element={<ResultsPage />}
-          />
-
-          <Route
-            path="/dashboard"
-            element={<DashboardPage />}
+            element={
+              <ResultsPage />
+            }
           />
         </Route>
+
+        {/* ===============================================
+            FALLBACK
+        =============================================== */}
 
         <Route
           path="*"
